@@ -1,40 +1,75 @@
-import React, {useState, useEffect} from 'react';
+import React, {FC, useState, useEffect} from 'react';
 import {View, Text, StyleSheet, ScrollView} from 'react-native';
 import {API_KEY} from '@env';
 // Keys stored in RN env
-import {} from '../components';
+import {Card, Search, Button} from '../components';
+import GetLocation from 'react-native-get-location';
 
-const Home = () => {
+const Home: FC = () => {
   const [loading, setLoading] = useState(true);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [POIData, setPOIData] = useState(null);
+  const [searchTerm, setSearchTerm] = useState(null);
+
+  const getLocation = async () => {
+    try {
+      const location = await GetLocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 15000,
+      });
+      setCurrentLocation(location);
+    } catch (e) {
+      console.error(e);
+      // Rollbar here later for errors
+    }
+  };
+
+  const getPOIs = async searchStr => {
+    try {
+      const response = await (
+        await fetch(
+          searchStr
+            ? `https://api.tomtom.com/search/2/poiSearch/${searchStr}.json?lat=${currentLocation.latitude}&lon=${currentLocation.longitude}&key=${API_KEY}`
+            : `https://api.tomtom.com/search/2/poiSearch/poi.json?lat=${currentLocation.latitude}&lon=${currentLocation.longitude}&key=${API_KEY}`,
+        )
+      ).json();
+      setPOIData(response);
+      if (POIData) setLoading(false);
+    } catch (e) {
+      console.error(e);
+      // Rollbar here later for errors
+    }
+  };
 
   useEffect(() => {
-    const queryPOIs = async () => {
-      try {
-        const response = await (
-          await fetch(
-            `https://api.themoviedb.org/3/discover/tv?api_key=${API_KEY}&language=en-US&sort_by=popularity.desc`,
-          )
-        ).json();
-        setPOIData(response);
-      } catch (e) {
-        console.error(e);
-        // Rollbar here later for errors
-      }
-    };
-
-    queryPOIs();
-  }, []);
-
-  useEffect(() => {
+    if (!currentLocation) getLocation();
+    if (currentLocation) getPOIs();
     if (POIData) setLoading(false);
-  }, [POIData]);
+  }, [currentLocation, POIData]);
+
+  if (searchTerm.length > 3) {
+    getPOIs(searchTerm);
+  }
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {!loading ? <>{/* POIs */}</> : <Text>Loading...</Text>}
-      </ScrollView>
+      {!loading ? (
+        <>
+          <Search stateUpdate={setSearchTerm} />
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {POIData.results.map(POI => (
+              <Card key={POI.id} name={POI.poi.name} distance={POI.dist} />
+            ))}
+          </ScrollView>
+        </>
+      ) : (
+        <Text>Loading...</Text>
+      )}
+      <Button
+        action="Update Location"
+        onPress={() => setCurrentLocation(null)}
+      />
     </View>
   );
 };
